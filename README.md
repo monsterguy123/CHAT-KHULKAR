@@ -56,7 +56,7 @@ For frontend you can use react js and use npx create vite@latest for the react p
 
 1. Clone the repo
    ```sh
-   git clone https://github.com/your_username/your_repo_name.git
+   git clone https://github.com/monsterguy123/CHAT-KHULKAR.git
 
 2. Open Frontend (cd frontend):---
    1. npm install
