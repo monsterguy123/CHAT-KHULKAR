@@ -49,10 +49,21 @@ To get a local copy up and running, follow these steps.
 
 ### Prerequisites
 
-Make sure you have Node.js and PostgreSQL installed on your machine.
+Make sure you have Node.js and for PostgreSQL you can use  any cloud provider for example . NEONDB cloud provider its free of cost.
+For frontend you can use react js and use npx create vite@latest for the react project. 
 
 ### Installation
 
 1. Clone the repo
    ```sh
    git clone https://github.com/your_username/your_repo_name.git
+
+2. Open Frontend (cd frontend):---
+   1. npm install
+   2. npm run dev
+  
+3. Open Backend (cd backend):---
+   1. npm install
+   2. npm start
+
+   
