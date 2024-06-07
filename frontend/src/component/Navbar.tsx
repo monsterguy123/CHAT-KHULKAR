@@ -11,7 +11,7 @@ const Navbar = () => {
           <div className="hidden sm:block">
             <div className="flex space-x-6 text-white">
               <Link
-                to="/rooms"
+                to="/"
                 className="hover:text-purple-200 text-xl transition duration-300"
               >
                 Rooms
@@ -21,6 +21,24 @@ const Navbar = () => {
                 className="hover:text-purple-200 text-xl transition duration-300"
               >
                 Create Room
+              </Link>
+              <Link
+                to="/friends"
+                className="hover:text-purple-200 text-xl transition duration-300"
+              >
+                Friends
+              </Link>
+              <Link
+                to="/notifications"
+                className="hover:text-purple-200 text-xl transition duration-300"
+              >
+                Notifications
+              </Link>
+              <Link
+                to="/signin"
+                className="hover:text-purple-200 text-xl transition duration-300"
+              >
+                Logout
               </Link>
             </div>
           </div>

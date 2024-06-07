@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const MessageController_1 = require("../controller/MessageController");
+const userMiddleware_1 = require("../middlewares/userMiddleware");
+const messageRouter = (0, express_1.Router)();
+messageRouter.get('/getMessage/:groupName', userMiddleware_1.usermiddleware, MessageController_1.GetGroupMessage);
+messageRouter.post('/createRoom', userMiddleware_1.usermiddleware, MessageController_1.CreateRoom);
+messageRouter.get('/getallrooms', userMiddleware_1.usermiddleware, MessageController_1.GetAllRoom);
+exports.default = messageRouter;

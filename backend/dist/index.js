@@ -12,87 +12,42 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const socket_io_1 = require("socket.io");
+exports.io = void 0;
+const cors_1 = __importDefault(require("cors"));
+const dotenv_1 = require("dotenv");
+const express_fileupload_1 = __importDefault(require("express-fileupload"));
+const express_1 = __importDefault(require("express"));
+const MessageRoute_1 = __importDefault(require("./routes/MessageRoute"));
+const UserRoute_1 = __importDefault(require("./routes/UserRoute"));
 const http_1 = require("http");
 const client_1 = require("@prisma/client");
-const cors_1 = __importDefault(require("cors"));
-const express_1 = __importDefault(require("express"));
+const socket_io_1 = require("socket.io");
+const FriendRequest_1 = __importDefault(require("./routes/FriendRequest"));
+const Friends_1 = __importDefault(require("./routes/Friends"));
+const OneVOne_1 = __importDefault(require("./routes/OneVOne"));
 const prisma = new client_1.PrismaClient();
 const app = (0, express_1.default)();
 const httpServer = (0, http_1.createServer)(app);
-const io = new socket_io_1.Server(httpServer, {
+(0, dotenv_1.config)();
+app.use((0, cors_1.default)());
+app.use(express_1.default.json());
+app.use((0, express_fileupload_1.default)({ useTempFiles: true }));
+app.use('/api/message', MessageRoute_1.default);
+app.use('/api/user', UserRoute_1.default);
+app.use('/api/', FriendRequest_1.default);
+app.use('/api/friends', Friends_1.default);
+app.use('/api/oneVone', OneVOne_1.default);
+exports.io = new socket_io_1.Server(httpServer, {
     cors: {
         origin: "*",
         methods: ['GET', 'POST'],
         credentials: true
     }
 });
-const adminNamespace = io.of('/admin');
-app.use((0, cors_1.default)());
-app.use(express_1.default.json());
-//get the message of the rooms
-app.get('/getMessage/:groupName', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const groupName = req.params.groupName;
-        if (groupName === 'null') {
-            return res.json({ msg: [{ msg: "" }] });
-        }
-        // Get group id
-        const group = yield prisma.group.findFirst({
-            where: { groupName }
-        });
-        if (group === null || group === void 0 ? void 0 : group.id) {
-            const data = yield prisma.message.findMany({
-                where: { groupId: group.id },
-                select: { message: true }
-            });
-            return res.json({ msg: data });
-        }
-        return res.json({ msg: "no group as such..." });
-    }
-    catch (error) {
-        console.error(error.message);
-        return res.json({ msg: error.message });
-    }
-}));
-//Create Rooms of our choice:---
-app.post('/createRoom', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const { roomName, roomStatus } = req.body;
-        const group = yield prisma.group.findFirst({
-            where: {
-                groupName: roomName
-            }
-        });
-        if (group === null || group === void 0 ? void 0 : group.id) {
-            return res.json({ msg: "Room has already been created plz try different name..." });
-        }
-        const newRoom = yield prisma.group.create({
-            data: {
-                groupName: roomName,
-                groupStatus: roomStatus
-            }
-        });
-        return res.status(201).json({ msg: "Room created successfully..." });
-    }
-    catch (error) {
-        console.error('Error creating room:', error);
-        return res.status(500).json({ msg: "An error occurred while creating the room.", error: error.message });
-    }
-}));
-//show All room:---
-app.get('/getallrooms', (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    try {
-        const rooms = yield prisma.group.findMany({});
-        return res.status(201).json({ rooms });
-    }
-    catch (error) {
-        return res.json({ msg: error.message });
-    }
-}));
-adminNamespace.on("connection", (socket) => {
-    console.log(`Client connected to /admin: ${socket.id}`);
-    socket.on('joinRoom', (room) => __awaiter(void 0, void 0, void 0, function* () {
+const oneV1Chat = exports.io.of('/friend');
+exports.io.on("connection", (socket) => {
+    console.log(`Client connected: ${socket.id}`);
+    socket.on("joinRoom", (room) => __awaiter(void 0, void 0, void 0, function* () {
         try {
             socket.join(room);
         }
@@ -100,10 +55,9 @@ adminNamespace.on("connection", (socket) => {
             console.error(`Error joining room ${room}:`, error);
         }
     }));
-    socket.on('message', ({ room, message }) => __awaiter(void 0, void 0, void 0, function* () {
+    socket.on("message", ({ room, message, senderId, imgUrl, name }) => __awaiter(void 0, void 0, void 0, function* () {
         try {
-            console.log(message);
-            adminNamespace.to(room).emit('message', { message });
+            exports.io.to(room).emit("message", { message, createdAt: new Date().toISOString(), sender: { id: senderId, image: imgUrl, name: name } });
             const group = yield prisma.group.findFirst({
                 where: { groupName: room },
                 select: { id: true }
@@ -112,27 +66,58 @@ adminNamespace.on("connection", (socket) => {
                 yield prisma.message.create({
                     data: {
                         message: message,
-                        groupId: group.id
+                        groupId: group.id,
+                        senderId: senderId
                     }
                 });
             }
+            else {
+                socket.emit("error", `Group ${room} not found`);
+            }
         }
         catch (error) {
-            console.error(`Error handling message in room ${room}:`, error);
+            socket.emit("error", `Error handling message in room ${room}`);
         }
     }));
     socket.on("disconnect", () => {
-        console.log(`Client disconnected from /admin: ${socket.id}`);
+        console.log(`Client disconnected: ${socket.id}`);
     });
 });
+oneV1Chat.on('connection', (socket) => {
+    console.log(`User connected: ${socket.id}`);
+    // Handle joining a room
+    socket.on("JoinRoom", (roomId) => {
+        console.log(`User ${socket.id} joining room: ${roomId}`);
+        socket.join(roomId);
+    });
+    // Handle sending messages
+    socket.on('message', ({ roomId, message, senderId, receiverId, image, name }) => __awaiter(void 0, void 0, void 0, function* () {
+        const date = new Date();
+        console.log(message, roomId);
+        oneV1Chat.to(roomId).emit('message', { message, senderId, sender: { image, name }, date });
+        //create message:---
+        yield prisma.oneVOneMessage.create({
+            data: {
+                receiverId,
+                senderId,
+                message,
+                ChatId: roomId
+            }
+        });
+    }));
+    // Handle disconnection
+    socket.on('disconnect', () => {
+        console.log(`User disconnected: ${socket.id}`);
+    });
+});
+process.on("SIGINT", () => __awaiter(void 0, void 0, void 0, function* () {
+    yield prisma.$disconnect();
+    process.exit();
+}));
+process.on("SIGTERM", () => __awaiter(void 0, void 0, void 0, function* () {
+    yield prisma.$disconnect();
+    process.exit();
+}));
 httpServer.listen(3000, () => {
     console.log('Server is running on port 3000');
 });
-process.on('SIGINT', () => __awaiter(void 0, void 0, void 0, function* () {
-    yield prisma.$disconnect();
-    process.exit();
-}));
-process.on('SIGTERM', () => __awaiter(void 0, void 0, void 0, function* () {
-    yield prisma.$disconnect();
-    process.exit();
-}));

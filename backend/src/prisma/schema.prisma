@@ -7,25 +7,95 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id            String                  @id @default(cuid())
+  name          String
+  image         String                  @default("https://www.pngarts.com/files/10/Default-Profile-Picture-Download-PNG-Image.png")
+  email         String                  @unique
+  password      String
+  groupCreated  Group[]                 @relation("Owner")
+  messages      Message[]               @relation("sender")
+  sendFriendRequests AddFriendNotification[] @relation("sendFriendRequest")
+  getFriendRequests  AddFriendNotification[] @relation("getFriendRequest")
+  follower      Friends[]               @relation("followed")
+  following     Friends[]               @relation("follower")
+  sentMessages  OneVOneMessage[]        @relation("SentMessages")
+  receivedMessages OneVOneMessage[]     @relation("ReceivedMessages")
+
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
+}
 
 model Group {
+  id            String      @id @default(cuid())
+  groupName     String
+  groupStatus   String      @default("this is a group...")
+  messages      Message[]
+  userId        String
+  userCreated   User        @relation("Owner", fields: [userId], references: [id])
 
-  id              String      @id @default(cuid())
-  groupName       String
-  groupStatus     String    @default("this is a group...")
-  messages        Message[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 }
 
 model Message {
+  id            String      @id @default(cuid())
+  groupId       String
+  message       String
+  senderId      String
+  sender        User        @relation("sender", fields: [senderId], references: [id])
+  
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  group         Group       @relation(fields: [groupId], references: [id])
+}
 
-  id          String      @id @default(cuid())
-  groupId     String
-  message     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  group       Group    @relation(fields: [groupId], references: [id])
+model AddFriendNotification {
+  id            String      @id @default(cuid())
+  userId        String
+  friendId      String
 
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user          User        @relation("sendFriendRequest", fields: [userId], references: [id])
+  friend        User        @relation("getFriendRequest", fields: [friendId], references: [id])
+
+  @@index([userId, friendId])
+}
+
+model Friends {
+  id            String      @id @default(cuid())
+
+  userId        String      
+  friendId      String
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  user          User        @relation("followed", fields: [userId], references: [id])
+  friend        User        @relation("follower", fields: [friendId], references: [id])
+}
+
+model OneVOneChat {
+  id            String      @id @default(cuid())
+
+  user1Id       String
+  user2Id       String
+  Messages    OneVOneMessage[]   @relation("OneVOne")
+
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+}
+
+model OneVOneMessage {
+  id            String      @id @default(cuid())
+  message       String
+  date     DateTime    @default(now())
+  senderId      String
+  receiverId    String
+  ChatId String
+  Chat  OneVOneChat  @relation("OneVOne",fields: [ChatId],references: [id])
+  sender        User        @relation("SentMessages", fields: [senderId], references: [id])
+  receiver      User        @relation("ReceivedMessages", fields: [receiverId], references: [id])
 }

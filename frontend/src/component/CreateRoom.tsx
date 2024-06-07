@@ -13,12 +13,17 @@ const CreateRoom = () => {
     e.preventDefault();
 
     try {
-      const url = `http://localhost:3000/createRoom`;
-      const res = await axios.post(url, { roomName, roomStatus });
+      const url = `http://localhost:3000/api/message/createRoom`;
+      const jwt = localStorage.getItem('JWT');
+      const res = await axios.post(url, { roomName, roomStatus },{
+            headers:{
+              Authorization:`Bearer ${jwt}`
+            }
+      });
 
       if (res && res.data) {
         alert(res.data.msg);
-        router('/rooms')
+        router('/')
       }
     } catch (error: any) {
       console.error("Error creating room:", error.message || error);

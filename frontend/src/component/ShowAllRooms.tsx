@@ -15,8 +15,13 @@ const ShowAllRooms = () => {
   useEffect(() => {
     const fetchRooms = async () => {
       try {
-        const url = `http://localhost:3000/getallrooms`;
-        const response = await axios.get(url);
+        const url = `http://localhost:3000/api/message/getallrooms`;
+        const jwt = localStorage.getItem('JWT');
+        const response = await axios.get(url,{
+           headers:{
+            Authorization:`Bearer ${jwt}`
+           }
+        });
 
         if (response.status === 201) {
           setRooms(response.data.rooms);

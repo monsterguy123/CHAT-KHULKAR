@@ -1,14 +1,32 @@
-import { Server } from "socket.io";
-import { createServer } from "http";
-import { PrismaClient } from "@prisma/client";
 import cors from 'cors';
-import express, { Application, Request, Response } from 'express';
+import { config } from 'dotenv';
+import fileUpload from 'express-fileupload';
+import express, { Application } from 'express';
+import messageRouter from "./routes/MessageRoute";
+import userRouter from "./routes/UserRoute";
+import { createServer } from 'http';
+import { PrismaClient } from "@prisma/client";
+import { Socket, Server } from "socket.io";
+import FriendRequestRouter from './routes/FriendRequest';
+import friendRouter from './routes/Friends';
+import OneVOneRouter from './routes/OneVOne';
 
 const prisma = new PrismaClient();
 const app: Application = express();
 const httpServer = createServer(app);
 
-const io = new Server(httpServer, {
+config();
+app.use(cors());
+app.use(express.json());
+app.use(fileUpload({ useTempFiles: true }));
+
+app.use('/api/message', messageRouter);
+app.use('/api/user', userRouter);
+app.use('/api/', FriendRequestRouter);
+app.use('/api/friends', friendRouter);
+app.use('/api/oneVone', OneVOneRouter);
+
+export const io = new Server(httpServer, {
   cors: {
     origin: "*",
     methods: ['GET', 'POST'],
@@ -16,92 +34,20 @@ const io = new Server(httpServer, {
   }
 });
 
-const adminNamespace = io.of('/admin');
+const oneV1Chat = io.of('/friend');
 
 interface Message {
   room: string;
   message: string;
+  senderId: string;
+  imgUrl: string;
+  name: string;
 }
 
-app.use(cors());
-app.use(express.json())
+io.on("connection", (socket: Socket) => {
+  console.log(`Client connected: ${socket.id}`);
 
-//get the message of the rooms
-app.get('/getMessage/:groupName', async (req: Request, res: Response) => {
-  try {
-    const groupName = req.params.groupName;
-
-    if (groupName === 'null') {
-      return res.json({ msg: [{ msg: "" }] });
-    }
-
-    // Get group id
-    const group = await prisma.group.findFirst({
-      where: { groupName }
-    });
-
-    if (group?.id) {
-      const data = await prisma.message.findMany({
-        where: { groupId: group.id },
-        select: { message: true }
-      });
-      return res.json({ msg: data });
-    }
-
-    return res.json({ msg: "no group as such..." });
-
-  } catch (error: any) {
-    console.error(error.message);
-    return res.json({ msg: error.message });
-  }
-});
-
-//Create Rooms of our choice:---
-app.post('/createRoom', async (req: Request, res: Response) => {
-  try {
-    const { roomName, roomStatus } = req.body;
-
-    const group = await prisma.group.findFirst({
-       where:{
-          groupName:roomName
-       }
-    })
-
-    if(group?.id){
-       return res.json({msg:"Room has already been created plz try different name..."})
-    }
-
-    const newRoom = await prisma.group.create({
-      data: {
-        groupName: roomName,
-        groupStatus: roomStatus
-      }
-    });
-
-    return res.status(201).json({ msg: "Room created successfully..."});
-
-  } catch (error:any) {
-    console.error('Error creating room:', error);
-    return res.status(500).json({ msg: "An error occurred while creating the room.", error: error.message });
-  }
-});
-
-//show All room:---
-app.get('/getallrooms',async(req:Request,res:Response)=>{
-    try {
-      
-      const rooms = await prisma.group.findMany({});
-      return res.status(201).json({rooms});
-
-    } catch (error:any) {
-        return res.json({msg:error.message})
-    }
-})
-
-adminNamespace.on("connection", (socket) => {
-  console.log(`Client connected to /admin: ${socket.id}`);
-
-  socket.on('joinRoom', async (room) => {
+  socket.on("joinRoom", async (room: string) => {
     try {
       socket.join(room);
     } catch (error) {
@@ -109,10 +55,10 @@ adminNamespace.on("connection", (socket) => {
     }
   });
 
-  socket.on('message', async ({ room, message }: Message) => {
+  socket.on("message", async ({ room, message, senderId, imgUrl, name }: Message) => {
     try {
-      console.log(message)
-      adminNamespace.to(room).emit('message', { message });
+
+      io.to(room).emit("message", { message, createdAt: new Date().toISOString(), sender: { id: senderId, image: imgUrl, name: name } });
 
       const group = await prisma.group.findFirst({
         where: { groupName: room },
@@ -123,30 +69,65 @@ adminNamespace.on("connection", (socket) => {
         await prisma.message.create({
           data: {
             message: message,
-            groupId: group.id
+            groupId: group.id,
+            senderId: senderId
           }
         });
+      } else {
+        socket.emit("error", `Group ${room} not found`);
       }
     } catch (error) {
-      console.error(`Error handling message in room ${room}:`, error);
+      socket.emit("error", `Error handling message in room ${room}`);
     }
   });
 
   socket.on("disconnect", () => {
-    console.log(`Client disconnected from /admin: ${socket.id}`);
+    console.log(`Client disconnected: ${socket.id}`);
   });
+});
+
+oneV1Chat.on('connection', (socket) => {
+  console.log(`User connected: ${socket.id}`);
+
+  // Handle joining a room
+  socket.on("JoinRoom", (roomId: string) => {
+    console.log(`User ${socket.id} joining room: ${roomId}`);
+    socket.join(roomId);
+  });
+
+  // Handle sending messages
+  socket.on('message', async({ roomId, message, senderId, receiverId, image, name }: { roomId: string; message: string; senderId: string; receiverId: string; image: string; name: string }) => {
+    const date = new Date();
+    console.log(message,roomId)
+    oneV1Chat.to(roomId).emit('message', { message, senderId, sender:{image, name}, date });
+  
+    //create message:---
+    await prisma.oneVOneMessage.create({
+        data:{
+           receiverId,
+           senderId,
+           message,
+           ChatId:roomId
+        }
+      })
+  });
+
+  // Handle disconnection
+  socket.on('disconnect', () => {
+    console.log(`User disconnected: ${socket.id}`);
+  });
+});
+
+process.on("SIGINT", async () => {
+  await prisma.$disconnect();
+  process.exit();
+});
+
+process.on("SIGTERM", async () => {
+  await prisma.$disconnect();
+  process.exit();
 });
 
 httpServer.listen(3000, () => {
   console.log('Server is running on port 3000');
-});
-
-process.on('SIGINT', async () => {
-  await prisma.$disconnect();
-  process.exit();
-});
-
-process.on('SIGTERM', async () => {
-  await prisma.$disconnect();
-  process.exit();
 });
